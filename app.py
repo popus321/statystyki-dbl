@@ -8,17 +8,17 @@ st.markdown("""
     <style>
     .main { background-color: #f5f7f9; }
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .mvp-box { background-color: #dff0d8; border: 1px solid #d6e9c6; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("⚔️ Zaawansowany Analizator Logów Bitewnych")
-st.caption("Nowość: MVP wybierany na podstawie najwyższego KDR")
 
 # 2. Sidebar (Ustawienia)
 with st.sidebar:
     st.header("⚙️ Opcje widoku")
     pokaz_kd = st.checkbox("Pokazuj K/D Ratio", value=True)
-    pokaz_mvp = st.checkbox("Wyróżnij MVP (najlepsze KDR)", value=True)
+    pokaz_mvp = st.checkbox("Wyróżnij MVP Meczu", value=True)
     st.divider()
     filtr_gracza = st.text_input("Szukaj gracza (filtr):")
 
@@ -73,7 +73,28 @@ if st.button("🚀 Generuj Raport", type="primary"):
                 if v_team == 1: zgony_t1[v_name] = zgony_t1.get(v_name, 0) + 1
                 elif v_team == 2: zgony_t2[v_name] = zgony_t2.get(v_name, 0) + 1
 
-        # 4. Dashboard Wyników
+        # --- LOGIKA GLOBALNEGO MVP ---
+        wszyscy_gracze = {} 
+        for p in set(fragi_t1.keys()) | set(zgony_t1.keys()):
+            k, d = fragi_t1.get(p, 0), zgony_t1.get(p, 0)
+            wszyscy_gracze[p] = {'k': k, 'd': d, 'team': 'Team 1', 'kd': (k / d if d > 0 else float(k))}
+        for p in set(fragi_t2.keys()) | set(zgony_t2.keys()):
+            k, d = fragi_t2.get(p, 0), zgony_t2.get(p, 0)
+            wszyscy_gracze[p] = {'k': k, 'd': d, 'team': 'Team 2', 'kd': (k / d if d > 0 else float(k))}
+
+        globalny_mvp = None
+        if wszyscy_gracze:
+            globalny_mvp = max(wszyscy_gracze.keys(), key=lambda p: (wszyscy_gracze[p]['kd'], wszyscy_gracze[p]['k']))
+            if wszyscy_gracze[globalny_mvp]['k'] == 0:
+                globalny_mvp = None
+
+        # 4. Wyświetlanie MVP na samym górze
+        if globalny_mvp and pokaz_mvp:
+            mvp_data = wszyscy_gracze[globalny_mvp]
+            st.success(f"🏆 **NAJLEPSZY GRACZ MECZU: {globalny_mvp}** ({mvp_data['team']})  \n"
+                       f"Statystyki: **{mvp_data['k']} Kills** / **{mvp_data['d']} Deaths** | KDR: **{round(mvp_data['kd'], 2)}**")
+
+        # 5. Dashboard Wyników
         total_k1 = sum(fragi_t1.values()) + js_t1
         total_k2 = sum(fragi_t2.values()) + js_t2
         
@@ -86,40 +107,25 @@ if st.button("🚀 Generuj Raport", type="primary"):
 
         c1, c2 = st.columns(2)
 
-        def render_team(fragi, zgony, js, title):
+        def render_team(fragi, zgony, js, title, mvp_nick):
             st.subheader(title)
-            
-            # Pobierz listę wszystkich graczy
             players = list(set(fragi.keys()) | set(zgony.keys()))
-            
-            # Funkcja do obliczania KDR dla potrzeb sortowania
-            def calc_kdr(p):
-                k = fragi.get(p, 0)
-                d = zgony.get(p, 0)
-                return k / d if d > 0 else float(k)
-
-            # Sortowanie: Najpierw po KDR, potem po liczbie fragów (jako tie-breaker)
-            players_sorted = sorted(players, key=lambda p: (calc_kdr(p), fragi.get(p, 0)), reverse=True)
-            
-            mvp_candidate = players_sorted[0] if players_sorted else None
+            players_sorted = sorted(players, key=lambda p: (fragi.get(p,0) / zgony.get(p,1) if zgony.get(p,0) > 0 else fragi.get(p,0)), reverse=True)
 
             for p in players_sorted:
                 if filtr_gracza.lower() and filtr_gracza.lower() not in p.lower():
                     continue
-                    
                 k, d = fragi.get(p, 0), zgony.get(p, 0)
-                kd = round(calc_kdr(p), 2)
-                
-                # MVP dostaje gwiazdkę tylko jeśli ma dodatnie KDR (powyżej 0)
-                prefix = "⭐ MVP | " if pokaz_mvp and p == mvp_candidate and kd > 0 else ""
+                kd = round(k/d, 2) if d > 0 else float(k)
+                prefix = "🏆 MVP | " if (p == mvp_nick and pokaz_mvp) else ""
                 kd_text = f" (K/D: `{kd}`)" if pokaz_kd else ""
                 st.write(f"{prefix}**{p}**: {k} K / {d} D {kd_text}")
             
             if js > 0:
                 st.info(f"🎯 JS: {js}")
 
-        with c1: render_team(fragi_t1, zgony_t1, js_t1, "🔵 Drużyna 1")
-        with c2: render_team(fragi_t2, zgony_t2, js_t2, "🔴 Drużyna 2")
+        with c1: render_team(fragi_t1, zgony_t1, js_t1, "🔵 Drużyna 1", globalny_mvp)
+        with c2: render_team(fragi_t2, zgony_t2, js_t2, "🔴 Drużyna 2", globalny_mvp)
 
         if logi_czatu:
             with st.expander("Pokaż zapis czatu"):
