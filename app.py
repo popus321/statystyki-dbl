@@ -19,7 +19,8 @@ with st.sidebar:
     pokaz_kd = st.checkbox("Pokazuj K/D Ratio", value=True)
     pokaz_mvp = st.checkbox("Wyróżnij MVP Meczu", value=True)
     st.divider()
-    filtr_gracza = st.text_input("Szukaj gracza (filtr):")
+    # Filtr gracza - każda zmiana tutaj odświeży widok
+    filtr_gracza = st.text_input("Szukaj gracza (wpisz nick):", key="search_input")
 
 # 3. Pole wejściowe
 tekst = st.text_area("Wklej logi tutaj:", height=250)
@@ -87,7 +88,7 @@ if st.button("🚀 Generuj Raport", type="primary"):
             if wszyscy_gracze[globalny_mvp]['k'] == 0:
                 globalny_mvp = None
 
-        # 4. Wyświetlanie MVP na samym górze
+        # 4. Wyświetlanie MVP (niezależnie od filtra, aby zawsze było wiadomo kto wygrał)
         if globalny_mvp and pokaz_mvp:
             mvp_data = wszyscy_gracze[globalny_mvp]
             st.success(f"🏆 **NAJLEPSZY GRACZ MECZU: {globalny_mvp}** ({mvp_data['team']})  \n"
@@ -107,20 +108,26 @@ if st.button("🚀 Generuj Raport", type="primary"):
         c1, c2 = st.columns(2)
 
         def render_team(fragi, zgony, js, team_name, team_icon, total_kills, mvp_nick):
-            # POPRAWKA: Nagłówek z ogólną ilością zabójstw
             st.subheader(f"{team_icon} {team_name} | Razem: {total_kills} Kills")
             
             players = list(set(fragi.keys()) | set(zgony.keys()))
             players_sorted = sorted(players, key=lambda p: (fragi.get(p,0) / zgony.get(p,1) if zgony.get(p,0) > 0 else fragi.get(p,0)), reverse=True)
 
+            found_any = False
             for p in players_sorted:
-                if filtr_gracza.lower() and filtr_gracza.lower() not in p.lower():
+                # LOGIKA FILTRA: Sprawdzamy czy wpisany tekst jest w nazwie gracza (ignorując wielkość liter)
+                if filtr_gracza.strip() and filtr_gracza.lower() not in p.lower():
                     continue
+                
+                found_any = True
                 k, d = fragi.get(p, 0), zgony.get(p, 0)
                 kd = round(k/d, 2) if d > 0 else float(k)
                 prefix = "🏆 MVP | " if (p == mvp_nick and pokaz_mvp) else ""
                 kd_text = f" (K/D: `{kd}`)" if pokaz_kd else ""
                 st.write(f"{prefix}**{p}**: {k} K / {d} D {kd_text}")
+            
+            if not found_any and filtr_gracza.strip():
+                st.write("*Nie znaleziono gracza w tej drużynie.*")
             
             if js > 0:
                 st.info(f"🎯 JS: {js}")
