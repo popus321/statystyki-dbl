@@ -12,13 +12,13 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("⚔️ Zaawansowany Analizator Logów Bitewnych")
-st.caption("Naprawiono: błąd z duplikowaniem nicków przez godzinę")
+st.caption("Nowość: MVP wybierany na podstawie najwyższego KDR")
 
 # 2. Sidebar (Ustawienia)
 with st.sidebar:
     st.header("⚙️ Opcje widoku")
     pokaz_kd = st.checkbox("Pokazuj K/D Ratio", value=True)
-    pokaz_mvp = st.checkbox("Wyróżnij MVP", value=True)
+    pokaz_mvp = st.checkbox("Wyróżnij MVP (najlepsze KDR)", value=True)
     st.divider()
     filtr_gracza = st.text_input("Szukaj gracza (filtr):")
 
@@ -39,16 +39,12 @@ if st.button("🚀 Generuj Raport", type="primary"):
             linia = linia.strip()
             if not linia: continue
 
-            # --- FILTR CZATU ---
             if "killed by" not in linia.lower():
                 logi_czatu.append(linia)
                 continue 
 
-            # --- OCZYSZCZANIE LINII Z GODZINY ---
-            # Usuwa format HH:MM z początku linii, aby nick był czysty
             linia_clean = re.sub(r"^\d{2}:\d{2}\s+", "", linia)
 
-            # --- LOGIKA JUDGEMENT STRIKE ---
             if "killed by judgement strike" in linia_clean.lower():
                 match_v = re.search(r"\(Team (\d)\)", linia_clean)
                 if match_v:
@@ -57,15 +53,11 @@ if st.button("🚀 Generuj Raport", type="primary"):
                     elif v_team == 2: js_t1 += 1
                 continue
 
-            # --- LOGIKA ZABÓJSTW ---
-            # Ofiara: bierzemy tekst przed "(Team X)"
             match_v = re.search(r"(.+?) \(Team (\d)\)", linia_clean)
             if match_v:
                 v_name = match_v.group(1).strip()
                 v_team = int(match_v.group(2))
                 
-                # Killer: bierzemy tekst po "killed by" a przed (Team X)
-                # Używamy re.search na fragmencie po 'killed by'
                 if "killed by" in linia_clean.lower():
                     parts = re.split(r"killed by", linia_clean, flags=re.IGNORECASE)
                     killer_part = parts[1].strip()
@@ -96,15 +88,30 @@ if st.button("🚀 Generuj Raport", type="primary"):
 
         def render_team(fragi, zgony, js, title):
             st.subheader(title)
-            players = sorted(set(fragi.keys()) | set(zgony.keys()), 
-                            key=lambda x: fragi.get(x, 0), reverse=True)
             
-            for p in players:
+            # Pobierz listę wszystkich graczy
+            players = list(set(fragi.keys()) | set(zgony.keys()))
+            
+            # Funkcja do obliczania KDR dla potrzeb sortowania
+            def calc_kdr(p):
+                k = fragi.get(p, 0)
+                d = zgony.get(p, 0)
+                return k / d if d > 0 else float(k)
+
+            # Sortowanie: Najpierw po KDR, potem po liczbie fragów (jako tie-breaker)
+            players_sorted = sorted(players, key=lambda p: (calc_kdr(p), fragi.get(p, 0)), reverse=True)
+            
+            mvp_candidate = players_sorted[0] if players_sorted else None
+
+            for p in players_sorted:
                 if filtr_gracza.lower() and filtr_gracza.lower() not in p.lower():
                     continue
+                    
                 k, d = fragi.get(p, 0), zgony.get(p, 0)
-                kd = round(k/d, 2) if d > 0 else float(k)
-                prefix = "⭐ MVP | " if pokaz_mvp and players and p == players[0] and k > 0 else ""
+                kd = round(calc_kdr(p), 2)
+                
+                # MVP dostaje gwiazdkę tylko jeśli ma dodatnie KDR (powyżej 0)
+                prefix = "⭐ MVP | " if pokaz_mvp and p == mvp_candidate and kd > 0 else ""
                 kd_text = f" (K/D: `{kd}`)" if pokaz_kd else ""
                 st.write(f"{prefix}**{p}**: {k} K / {d} D {kd_text}")
             
