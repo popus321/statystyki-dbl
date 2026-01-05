@@ -8,7 +8,6 @@ st.markdown("""
     <style>
     .main { background-color: #f5f7f9; }
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .mvp-box { background-color: #dff0d8; border: 1px solid #d6e9c6; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -107,8 +106,10 @@ if st.button("🚀 Generuj Raport", type="primary"):
 
         c1, c2 = st.columns(2)
 
-        def render_team(fragi, zgony, js, title, mvp_nick):
-            st.subheader(title)
+        def render_team(fragi, zgony, js, team_name, team_icon, total_kills, mvp_nick):
+            # POPRAWKA: Nagłówek z ogólną ilością zabójstw
+            st.subheader(f"{team_icon} {team_name} | Razem: {total_kills} Kills")
+            
             players = list(set(fragi.keys()) | set(zgony.keys()))
             players_sorted = sorted(players, key=lambda p: (fragi.get(p,0) / zgony.get(p,1) if zgony.get(p,0) > 0 else fragi.get(p,0)), reverse=True)
 
@@ -124,8 +125,8 @@ if st.button("🚀 Generuj Raport", type="primary"):
             if js > 0:
                 st.info(f"🎯 JS: {js}")
 
-        with c1: render_team(fragi_t1, zgony_t1, js_t1, "🔵 Drużyna 1", globalny_mvp)
-        with c2: render_team(fragi_t2, zgony_t2, js_t2, "🔴 Drużyna 2", globalny_mvp)
+        with c1: render_team(fragi_t1, zgony_t1, js_t1, "Drużyna 1", "🔵", total_k1, globalny_mvp)
+        with c2: render_team(fragi_t2, zgony_t2, js_t2, "Drużyna 2", "🔴", total_k2, globalny_mvp)
 
         if logi_czatu:
             with st.expander("Pokaż zapis czatu"):
