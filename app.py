@@ -4,12 +4,13 @@ import streamlit as st
 # 1. Konfiguracja i Stylistyka
 st.set_page_config(page_title="Pro Analizator Logów", layout="wide", page_icon="⚔️")
 
+# POPRAWKA: Zmieniono unsafe_allow_name na unsafe_allow_html
 st.markdown("""
     <style>
     .main { background-color: #f5f7f9; }
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     </style>
-    """, unsafe_allow_name=True)
+    """, unsafe_allow_html=True)
 
 st.title("⚔️ Zaawansowany Analizator Logów Bitewnych")
 st.caption("Automatycznie pomija czat i liczy statystyki K/D")
