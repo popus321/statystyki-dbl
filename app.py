@@ -1,37 +1,45 @@
 import re
 import streamlit as st
 
-# 1. Konfiguracja i Stylistyka
-st.set_page_config(page_title="Pro Analizator Logów", layout="wide", page_icon="⚔️")
+# 1. Konfiguracja
+st.set_page_config(page_title="Parser DBL Stats", layout="wide", page_icon="⚔️")
 
 st.markdown("""
     <style>
     .main { background-color: #f5f7f9; }
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .team-extra { color: #555; font-weight: bold; padding: 10px; background: #eee; border-radius: 5px; margin-top: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("⚔️ Zaawansowany Analizator Logów Bitewnych")
+# Logo
+st.markdown("""
+    <div style="background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%); padding: 20px; border-radius: 15px; margin-bottom: 25px">
+        <h1 style="color: white; text-align: center; font-family: 'Arial Black'; letter-spacing: 5px; margin: 0;">
+            PARSER <span style="color: #ff4b4b;">DBL</span> STATS
+        </h1>
+    </div>
+    """, unsafe_allow_html=True)
 
-# 2. Sidebar (Ustawienia)
+# 2. Sidebar
 with st.sidebar:
-    st.header("⚙️ Opcje widoku")
+    st.header("⚙️ Ustawienia")
     pokaz_kd = st.checkbox("Pokazuj K/D Ratio", value=True)
-    pokaz_mvp = st.checkbox("Wyróżnij MVP Meczu", value=True)
+    pokaz_mvp = st.checkbox("Wyróżnij Globalnego MVP", value=True)
     st.divider()
-    # Filtr gracza - każda zmiana tutaj odświeży widok
-    filtr_gracza = st.text_input("Szukaj gracza (wpisz nick):", key="search_input")
+    filtr_gracza = st.text_input("Szukaj gracza:")
 
-# 3. Pole wejściowe
+# 3. Wejście
 tekst = st.text_area("Wklej logi tutaj:", height=250)
 
 if st.button("🚀 Generuj Raport", type="primary"):
     if not tekst:
         st.warning("Najpierw wklej logi!")
     else:
-        fragi_t1, fragi_t2 = {}, {}
-        zgony_t1, zgony_t2 = {}, {}
-        js_t1, js_t2 = 0, 0
+        fragi = {1: {}, 2: {}}
+        zgony_ogolne = {1: {}, 2: {}}
+        # Statystyki drużynowe (nie przypisane do konkretnych osób)
+        team_stats = {1: {"ff": 0, "js": 0}, 2: {"ff": 0, "js": 0}}
         logi_czatu = []
 
         linie = tekst.split("\n")
@@ -39,101 +47,87 @@ if st.button("🚀 Generuj Raport", type="primary"):
             linia = linia.strip()
             if not linia: continue
 
-            if "killed by" not in linia.lower():
+            if "killed by" not in linia.lower() and "have been killed by" not in linia.lower():
                 logi_czatu.append(linia)
                 continue 
 
             linia_clean = re.sub(r"^\d{2}:\d{2}\s+", "", linia)
 
+            # --- JUDGEMENT STRIKE ---
             if "killed by judgement strike" in linia_clean.lower():
-                match_v = re.search(r"\(Team (\d)\)", linia_clean)
-                if match_v:
-                    v_team = int(match_v.group(1))
-                    if v_team == 1: js_t2 += 1
-                    elif v_team == 2: js_t1 += 1
+                match = re.search(r"(.+?) \(Team (\d)\)", linia_clean)
+                if match:
+                    v_name, v_team = match.group(1).strip(), int(match.group(2))
+                    zgony_ogolne[v_team][v_name] = zgony_ogolne[v_team].get(v_name, 0) + 1
+                    beneficiary_team = 2 if v_team == 1 else 1
+                    team_stats[beneficiary_team]["js"] += 1
                 continue
 
+            # --- FIRE FIELD ---
+            if "killed by fire field" in linia_clean.lower():
+                match = re.search(r"(.+?) \(Team (\d)\)", linia_clean)
+                if match:
+                    v_name, v_team = match.group(1).strip(), int(match.group(2))
+                    zgony_ogolne[v_team][v_name] = zgony_ogolne[v_team].get(v_name, 0) + 1
+                    # Punkt (korzyść) idzie do drużyny przeciwnej
+                    beneficiary_team = 2 if v_team == 1 else 1
+                    team_stats[beneficiary_team]["ff"] += 1
+                continue
+
+            # --- STANDARDOWY FRAG ---
             match_v = re.search(r"(.+?) \(Team (\d)\)", linia_clean)
             if match_v:
-                v_name = match_v.group(1).strip()
-                v_team = int(match_v.group(2))
+                v_name, v_team = match_v.group(1).strip(), int(match_v.group(2))
+                zgony_ogolne[v_team][v_name] = zgony_ogolne[v_team].get(v_name, 0) + 1
                 
-                if "killed by" in linia_clean.lower():
-                    parts = re.split(r"killed by", linia_clean, flags=re.IGNORECASE)
-                    killer_part = parts[1].strip()
-                    
-                    match_k = re.search(r"(.+?) \(Team (\d)\)", killer_part)
+                parts = re.split(r"killed by", linia_clean, flags=re.IGNORECASE)
+                if len(parts) > 1:
+                    match_k = re.search(r"(.+?) \(Team (\d)\)", parts[1].strip())
                     if match_k:
-                        k_name = match_k.group(1).strip()
-                        k_team = int(match_k.group(2))
+                        k_name, k_team = match_k.group(1).strip(), int(match_k.group(2))
+                        fragi[k_team][k_name] = fragi[k_team].get(k_name, 0) + 1
 
-                        if k_team == 1: fragi_t1[k_name] = fragi_t1.get(k_name, 0) + 1
-                        elif k_team == 2: fragi_t2[k_name] = fragi_t2.get(k_name, 0) + 1
-                
-                if v_team == 1: zgony_t1[v_name] = zgony_t1.get(v_name, 0) + 1
-                elif v_team == 2: zgony_t2[v_name] = zgony_t2.get(v_name, 0) + 1
-
-        # --- LOGIKA GLOBALNEGO MVP ---
-        wszyscy_gracze = {} 
-        for p in set(fragi_t1.keys()) | set(zgony_t1.keys()):
-            k, d = fragi_t1.get(p, 0), zgony_t1.get(p, 0)
-            wszyscy_gracze[p] = {'k': k, 'd': d, 'team': 'Team 1', 'kd': (k / d if d > 0 else float(k))}
-        for p in set(fragi_t2.keys()) | set(zgony_t2.keys()):
-            k, d = fragi_t2.get(p, 0), zgony_t2.get(p, 0)
-            wszyscy_gracze[p] = {'k': k, 'd': d, 'team': 'Team 2', 'kd': (k / d if d > 0 else float(k))}
-
-        globalny_mvp = None
-        if wszyscy_gracze:
-            globalny_mvp = max(wszyscy_gracze.keys(), key=lambda p: (wszyscy_gracze[p]['kd'], wszyscy_gracze[p]['k']))
-            if wszyscy_gracze[globalny_mvp]['k'] == 0:
-                globalny_mvp = None
-
-        # 4. Wyświetlanie MVP (niezależnie od filtra, aby zawsze było wiadomo kto wygrał)
-        if globalny_mvp and pokaz_mvp:
-            mvp_data = wszyscy_gracze[globalny_mvp]
-            st.success(f"🏆 **NAJLEPSZY GRACZ MECZU: {globalny_mvp}** ({mvp_data['team']})  \n"
-                       f"Statystyki: **{mvp_data['k']} Kills** / **{mvp_data['d']} Deaths** | KDR: **{round(mvp_data['kd'], 2)}**")
-
-        # 5. Dashboard Wyników
-        total_k1 = sum(fragi_t1.values()) + js_t1
-        total_k2 = sum(fragi_t2.values()) + js_t2
+        # MVP
+        wszyscy = {}
+        for t in [1, 2]:
+            for p in set(fragi[t].keys()) | set(zgony_ogolne[t].keys()):
+                k, d = fragi[t].get(p, 0), zgony_ogolne[t].get(p, 0)
+                wszyscy[p] = {'k': k, 'd': d, 't': t, 'kd': (k/d if d > 0 else float(k))}
         
-        col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric("Wynik Team 1", total_k1)
-        col_m2.metric("Wynik Team 2", total_k2)
-        col_m3.metric("Czat", len(logi_czatu))
+        g_mvp = max(wszyscy.keys(), key=lambda x: (wszyscy[x]['kd'], wszyscy[x]['k'])) if wszyscy else None
 
-        st.divider()
+        t1_total = sum(fragi[1].values()) + team_stats[1]["js"] + team_stats[1]["ff"]
+        t2_total = sum(fragi[2].values()) + team_stats[2]["js"] + team_stats[2]["ff"]
+        
+        if g_mvp and pokaz_mvp and wszyscy[g_mvp]['k'] > 0:
+            st.success(f"🏆 **GLOBAL MVP: {g_mvp}** (Team {wszyscy[g_mvp]['t']})")
 
         c1, c2 = st.columns(2)
 
-        def render_team(fragi, zgony, js, team_name, team_icon, total_kills, mvp_nick):
-            st.subheader(f"{team_icon} {team_name} | Razem: {total_kills} Kills")
-            
-            players = list(set(fragi.keys()) | set(zgony.keys()))
-            players_sorted = sorted(players, key=lambda p: (fragi.get(p,0) / zgony.get(p,1) if zgony.get(p,0) > 0 else fragi.get(p,0)), reverse=True)
+        def render_team(t_num, icon, score):
+            with (c1 if t_num == 1 else c2):
+                st.subheader(f"{icon} Team {t_num} | Suma: {score}")
+                players = sorted(set(fragi[t_num].keys()) | set(zgony_ogolne[t_num].keys()), 
+                                key=lambda x: (fragi[t_num].get(x,0) / zgony_ogolne[t_num].get(x,1) if zgony_ogolne[t_num].get(x,0) > 0 else fragi[t_num].get(x,0)), 
+                                reverse=True)
 
-            found_any = False
-            for p in players_sorted:
-                # LOGIKA FILTRA: Sprawdzamy czy wpisany tekst jest w nazwie gracza (ignorując wielkość liter)
-                if filtr_gracza.strip() and filtr_gracza.lower() not in p.lower():
-                    continue
+                for p in players:
+                    if filtr_gracza.strip() and filtr_gracza.lower() not in p.lower(): continue
+                    k, d = fragi[t_num].get(p, 0), zgony_ogolne[t_num].get(p, 0)
+                    kd = round(k/d, 2) if d > 0 else float(k)
+                    mvp = "⭐ " if p == g_mvp and pokaz_mvp else ""
+                    st.write(f"{mvp}**{p}**: {k} K / {d} D" + (f" (K/D: `{kd}`)" if pokaz_kd else ""))
                 
-                found_any = True
-                k, d = fragi.get(p, 0), zgony.get(p, 0)
-                kd = round(k/d, 2) if d > 0 else float(k)
-                prefix = "🏆 MVP | " if (p == mvp_nick and pokaz_mvp) else ""
-                kd_text = f" (K/D: `{kd}`)" if pokaz_kd else ""
-                st.write(f"{prefix}**{p}**: {k} K / {d} D {kd_text}")
-            
-            if not found_any and filtr_gracza.strip():
-                st.write("*Nie znaleziono gracza w tej drużynie.*")
-            
-            if js > 0:
-                st.info(f"🎯 JS: {js}")
+                # WYPISYWANIE POD LUDŹMI (SUMA DRUŻYNOWA)
+                ff_val = team_stats[t_num]["ff"]
+                js_val = team_stats[t_num]["js"]
+                if ff_val > 0 or js_val > 0:
+                    st.markdown("<div class='team-extra'>Dodatkowe punkty drużyny:</div>", unsafe_allow_html=True)
+                    if ff_val > 0: st.info(f"🔥 Fire Field: {ff_val}")
+                    if js_val > 0: st.info(f"⚡ Judgement Strike: {js_val}")
 
-        with c1: render_team(fragi_t1, zgony_t1, js_t1, "Drużyna 1", "🔵", total_k1, globalny_mvp)
-        with c2: render_team(fragi_t2, zgony_t2, js_t2, "Drużyna 2", "🔴", total_k2, globalny_mvp)
+        render_team(1, "🔵", t1_total)
+        render_team(2, "🔴", t2_total)
 
         if logi_czatu:
             with st.expander("Pokaż zapis czatu"):
